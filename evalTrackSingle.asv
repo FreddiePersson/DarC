@@ -1,0 +1,770 @@
+function evalTrack
+figHandle = 1;
+if ishandle(figHandle)
+    close(figHandle)
+end
+
+%% Open file
+clc
+track_filename = get_cf_highlight; %get filename from Current Folder Explorer
+track_filename = track_filename{1};
+disp(['Loading ''' track_filename '''...'])
+[data, param] = track_open_hdf5(track_filename);
+apdAll = extractApdArrays(data);    % extract APD counts for displaying
+disp('Done!')
+
+% Moving average profile
+N = 10; %moving average
+ni = 1; % line in image
+
+%% UI Controls creation 
+figure(figHandle)
+
+set(figHandle,'Toolbar','figure') % Show figure toolbar
+screen = get(0,'ScreenSize');
+screen(2) = screen(4)*0.05;
+screen(4) = screen(4)*0.95;
+set(figHandle,'OuterPosition',screen) 
+
+% UI Controls position constants
+xSize = [0.2 0.3 0.05 0.05 0.05 0.04 0.07 0.04 0.08];
+xStep = 0.01 * ones(size(xSize));
+xPos = cumsum(xStep) + [0 cumsum(xSize(1:end-1))];
+ 
+ySize = 0.035;
+yPos = 0.01;
+
+ctrlPos.lbComment = [xPos(1) yPos xSize(1) ySize];
+ctrlPos.edComment = [xPos(2) yPos xSize(2) ySize];
+ctrlPos.pmPrev = [xPos(3) yPos xSize(3) ySize];
+ctrlPos.pmNext = [xPos(4) yPos xSize(4) ySize];
+ctrlPos.lbLine = [xPos(5) yPos xSize(5) ySize];
+ctrlPos.saveTrace = [xPos(6) yPos xSize(6) ySize];
+ctrlPos.lbCommentTime = [xPos(7) yPos xSize(7) ySize];
+ctrlPos.adjustTime = [xPos(8) yPos xSize(8) ySize];
+ctrlPos.analyseSelection = [xPos(9) yPos xSize(9) ySize];
+
+% Controls creation
+lbLine  = uicontrol(...
+    'Style','Text',...
+    'String','',...
+    'Units','Normalized',...
+    'Position',ctrlPos.lbLine,...
+    'BackgroundColor',0.8*[1 1 1]...
+    );
+pmPrev = uicontrol(...
+    'Style','PushButton',...
+    'String','Prev',...
+    'Units','Normalized',...
+    'Position',ctrlPos.pmPrev,...
+    'Callback',@prevCallback...
+    );
+pmNext = uicontrol(...
+    'Style','PushButton',...
+    'String','Next',...
+    'Units','Normalized',...
+    'Position',ctrlPos.pmNext,...
+    'Callback',@nextCallback...
+    );
+lbComment = uicontrol(...
+    'Style','Text',...
+    'String',['Add Comment for line' 10 '(<RET> to save in comment.txt)'],...
+    'Units','Normalized',...
+    'Position',ctrlPos.lbComment...
+    );
+edComment = uicontrol(...
+    'Style','Edit',...
+    'String','',...
+    'Units','Normalized',...
+    'Position',ctrlPos.edComment,...
+    'Callback',@commentCallback...
+    );
+saveTrace = uicontrol(...
+    'Style','PushButton',...
+    'String','Save',...
+    'Units','Normalized',...
+    'Position',ctrlPos.saveTrace,...
+    'Callback',@saveCallback...
+    );
+
+lbCommentTime = uicontrol(...
+    'Style','Text',...
+    'String',['Time adjutment' 10 ' [sec](<RET>)'],...
+    'Units','Normalized',...
+    'Position',ctrlPos.lbCommentTime...
+    );
+edTime = uicontrol(...
+    'Style','Edit',...
+    'String','',...
+    'Units','Normalized',...
+    'Position',ctrlPos.adjustTime,...
+    'Callback',@timeCallback...
+    );
+pmAnalyse = uicontrol(...
+    'Style','PushButton',...
+    'String','Analyze',...
+    'Units','Normalized',...
+    'Position',ctrlPos.analyseSelection,...
+    'Callback',@analyseSelection...
+    );
+
+%% Draw everything once
+% drawScan(data, apdAll, param, ni, param.fbThresholdDetectionMovingAverageSize);
+% set(lbLine, 'String', sprintf('Line: %d', ni));
+drawScan(data, apdAll, param, ni, param.fbThresholdDetectionMovingAverageSize);
+set(lbLine, 'String', sprintf('Line: %d', ni));
+
+% link axes
+ax = findobj(gcf,'Tag','linkX')';
+linkaxes(ax,'x');
+% scale y-axis of ax(2) and ax(3) dynamically
+dynamicY(ax(2));
+dynamicY(ax(3));
+        
+% change axes on Scanner trajectory
+axScanner = findobj(gcf,'Tag','adjustXY')';
+addlistener(ax(2), 'XLim', 'PostSet', @scaleXY );
+
+    function scaleXY(varargin)
+        try
+        hline = findobj(ax(2),'type','line' );
+        xlim =  get(ax(2),'XLim');
+        xData = get(hline(1),'XData');
+        yData = get(hline(1),'YData');
+        xDataRng = xData > xlim(1) & xData < xlim(2);        
+        ylimMin = min(yData(xDataRng));
+        ylimMax = max(yData(xDataRng));
+        set(axScanner,'YLim',[min(ylimMin) max(ylimMax)])
+        % ------ try fitting stage movement to scanner trajectory ------
+        % get stage movement 
+        stageX = (data{ni, 1}.stageY)*1e3;
+        yData = get(hline(1),'YData');
+        yData = yData(xDataRng);
+        med = median(stageX)-median(yData);
+        set(hline(2),'YData',stageX - med);
+        end
+        
+        try
+        hline = findobj(ax(3),'type','line' );
+        xlim =  get(ax(3),'XLim');
+        xData = get(hline(1),'XData');
+        yData = get(hline(1),'YData');
+        xDataRng = xData > xlim(1) & xData < xlim(2);
+        ylimMin = min(yData(xDataRng));
+        ylimMax = max(yData(xDataRng));
+        set(axScanner,'XLim',[min(ylimMin) max(ylimMax)])
+        % ------ try fitting stage movement to scanner trajectory ------
+        % get stage movement 
+        stageY = (data{ni, 1}.stageX)*1e3;
+        yData = get(hline(1),'YData');
+        yData = yData(xDataRng);
+        med = median(stageY)-median(yData);
+        set(hline(2),'YData',stageY - med);
+        end
+        
+        % dynamic subset of trace in red -------------------------------
+        try
+        hxyTraj= findobj(gcf,'tag','XY_traj');
+        hxyTrajSub = findobj(gcf,'tag','XY_traj_subset');
+        
+        xyTrajDataX = get(hxyTraj,'XData');
+        xyTrajDataY = get(hxyTraj,'YData');
+        
+        set(hxyTrajSub,...
+            'XData', xyTrajDataX(xDataRng), ...
+            'YData', xyTrajDataY(xDataRng) ...
+            )
+        end
+        
+    end
+
+
+    function prevCallback(varargin)
+        if ni > 1;
+            ni = ni-1;
+            drawScan(data, apdAll, param, ni, N);
+        end;
+        set(lbLine, 'String', sprintf('Line: %d', ni));
+    end
+
+
+    function nextCallback(varargin)
+        if ni < length(data);
+            ni = ni+1;
+            drawScan(data, apdAll, param, ni, N);
+        end
+        set(lbLine, 'String', sprintf('Line: %d', ni));
+    end
+
+    function commentCallback(varargin)
+        fid = fopen('comment.txt', 'a+');
+        fprintf(fid,'%s (Line %d): %s \n', track_filename, ni, get(edComment,'String')); 
+        fclose(fid);
+    end
+
+    % function to save actual trace in mat file if wanted.
+    function saveCallback(varargin)
+        dummy = [track_filename(1:24),' Trace ',num2str(ni),' '];
+        saveFile = [dummy,'.mat'];
+        % get apd counts --------------------------------------------------
+            apds = double(data{ni}.apds);
+            % moving average
+                % alpha = (1/10)^(1/N);
+                alpha = (1/10);
+                apds = filter(1-alpha,[1 -alpha], apds);
+            apdCounts = apds*param.controllerUpdateClock/1e3;
+            hline = findobj(ax(1),'type','line' );
+            xlim =  get(ax(1),'XLim');
+            dataT = get(hline(1),'XData');
+            limits = dataT >= xlim(1) & dataT <= xlim(2);
+            dataT = dataT(limits);
+            apdCounts = apdCounts(limits,:);
+        % get x and y trajectories of scanner and stage -------------------
+            % scanner
+            hscannerX= findobj(gcf,'Tag','scannerX');   
+            scannerX = get(hscannerX,'YData');
+            scannerX = scannerX(limits);
+            hscannerY= findobj(gcf,'Tag','scannerY');   
+            scannerY = get(hscannerY,'YData');
+            scannerY = scannerY(limits);
+            % stage
+            hstageX= findobj(gcf,'Tag','stageX');   
+            stageX = get(hstageX,'YData');
+            stageX = stageX(limits);
+            hstageY= findobj(gcf,'Tag','stageY');   
+            stageY = get(hstageY,'YData');
+            stageY = stageY(limits);
+        % get trigger -----------------------------------------------------
+            trigger = data{ni}.trigger;
+            trigger = double(trigger(limits));
+        % save data -------------------------------------------------------
+        save(saveFile,'dataT','apdCounts',...
+            'scannerX','scannerY','stageX','stageY','trigger');
+    end
+
+   % function to adjust time on time axis
+   function timeCallback(varargin)
+        newTime = str2double(get(edTime,'String'))*1000;
+        xlim =  get(ax(2),'XLim');
+        set(ax(2),'Xlim',[xlim(1) xlim(1)+newTime])
+   end
+
+   %% function to analyse selected data
+    function analyseSelection(varargin)
+        % get apd counts --------------------------------------------------
+            apds = double(data{ni}.apds);
+              % moving average
+              % alpha = (1/10)^(1/N);
+              % alpha = (1/10);
+              % apds = filter(1-alpha,[1 -alpha], apds);
+            apdCounts = apds*param.controllerUpdateClock/1e3; % in kHz
+        % get time range --------------------------------------------------     
+            hline = findobj(ax(1),'type','line' );
+            xlim =  get(ax(1),'XLim');
+            dataT = get(hline(1),'XData');
+            trigger = double(data{ni}.trigger)';
+            if isempty(find(trigger,1)) % if trigger consists only of zeros (satge off)
+                trigger(1:1000:end) = 1;
+            end
+            limits1 = dataT >= xlim(1) & dataT <= xlim(2) & trigger > 0.1;
+            ind1 = find(limits1, 1, 'first'); 
+            ind2 = find(limits1, 1, 'last');
+            limits=zeros(1,length(dataT));
+            limits(ind1:ind2)=1; 
+            limits=logical(limits);
+            dataT = dataT(limits);
+            apdCounts = apdCounts(limits,:);
+            apds = apds(limits,:);
+        % calculate histogram ---------------------------------------------
+            edges  = 0:param.controllerUpdateClock/1e3:1200;
+            histAll   = zeros(length(edges),3);
+            for i = 1:3
+            histAll(:,i)   = histc(apdCounts(:,i),edges);
+            end
+            limUpMax = max([apdCounts(:,1);apdCounts(:,2);apdCounts(:,3)]);
+        % get x and y trajectories of scanner and stage -------------------
+            % scanner
+            hscannerX= findobj(gcf,'Tag','scannerX');   
+            scannerX = get(hscannerX,'YData');
+            scannerX = scannerX(limits);
+            hscannerY= findobj(gcf,'Tag','scannerY');   
+            scannerY = get(hscannerY,'YData');
+            scannerY = scannerY(limits);
+            % stage
+            hstageX= findobj(gcf,'Tag','stageX');   
+            stageX = get(hstageX,'YData');
+            stageX = stageX(limits);
+            hstageY= findobj(gcf,'Tag','stageY');   
+            stageY = get(hstageY,'YData');
+            stageY = stageY(limits);
+        % calculate error -------------------------------------------------
+            errorX = (scannerX-stageX);
+            errorY = (scannerY-stageY);
+            [scannerXLP,scannerXHP] = freqCutoffFilter(dataT/1e3,scannerX,5,5);
+            [scannerYLP,scannerYHP] = freqCutoffFilter(dataT/1e3,scannerY,5,5);
+            [errorXLP,errorXHP] = freqCutoffFilter(dataT/1e3,errorX,5,5);
+            [errorYLP,errorYHP] = freqCutoffFilter(dataT/1e3,errorY,5,5);
+            error = sqrt(errorXHP.^2+errorYHP.^2);
+            % shift stage vs scanner and calculate error   
+            shift=20; % in ms (multiple of 500µs)
+            shiftVec = 0.5:0.5:shift;
+            errorXshift = zeros(length(shiftVec),1);
+            errorYshift = zeros(length(shiftVec),1);
+            for i = 1:length(shiftVec)
+                shiftedErrorX = scannerXHP-circshift(stageX-mean(stageX),[0 shiftVec(i)*10]);
+                %[~,shiftedErrorX] = freqCutoffFilter(dataT/1e3,shiftedErrorX,5,5);
+                errorXshift(i) = mean(abs(shiftedErrorX));
+                shiftedErrorY = scannerYHP-circshift(stageY-mean(stageY),[0 shiftVec(i)*10]);
+                %[~,shiftedErrorY] = freqCutoffFilter(dataT/1e3,shiftedErrorY,5,5);
+                errorYshift(i) = mean(abs(shiftedErrorY));
+            end
+            % time shift for minimum error
+            delayX = shiftVec(errorXshift==min(errorXshift));
+            delayY = shiftVec(errorYshift==min(errorYshift));
+            delay = mean([delayX,delayY]);
+            % errorX,Y for shift: delay
+            shiftedErrorX = scannerX-circshift(stageX,[0 round(delay*10)]);
+            [~,shiftedErrorX] = freqCutoffFilter(dataT/1e3,shiftedErrorX,5,5);
+            shiftedErrorY = scannerY-circshift(stageY,[0 round(delay*10)]);
+            [~,shiftedErrorY] = freqCutoffFilter(dataT/1e3,shiftedErrorY,5,5);
+            shiftedError = sqrt(shiftedErrorX.^2+shiftedErrorY.^2);     
+        % calculate velocity ----------------------------------------------
+            scannerVx = gradient(conv(scannerX,ones(1,100),'same'));
+            scannerVy = gradient(conv(scannerY,ones(1,100),'same'));
+            scannerV = sqrt(scannerVx.^2 + scannerVy.^2);
+        % get triggerEdges for reshaping
+            triggerGradient = gradient(trigger(limits));
+            triggerRisingEdges = triggerGradient>0;
+            triggerEdges = find(triggerRisingEdges == 1);
+            triggerEdges = [1 triggerEdges];
+            % reshape
+            colums = (length(triggerEdges)-1)/2;
+            rows = triggerEdges(2)-triggerEdges(1)+1;
+            scannerX1P = reshape(scannerX(1:colums*rows)',rows,colums);
+            scannerY1P = reshape(scannerY(1:colums*rows)',rows,colums);
+            
+            scannerXHP1P = reshape(scannerXHP(1:colums*rows)',rows,colums);
+            scannerYHP1P = reshape(scannerYHP(1:colums*rows)',rows,colums);
+                        
+            stageX1P   = reshape(stageX(1:colums*rows)',rows,colums);
+            stageY1P   = reshape(stageY(1:colums*rows)',rows,colums);
+            dataT1P    = reshape(dataT(1:colums*rows)',rows,colums);
+            apds1P     = reshape(apds(1:colums*rows,:),[rows,colums,3]);
+            apdCounts1P = reshape(apdCounts(1:colums*rows,:),[rows,colums,3]);
+            scannerVx1P = reshape(scannerVx(1:colums*rows)',rows,colums);
+            scannerVy1P = reshape(scannerVy(1:colums*rows)',rows,colums);
+            scannerV1P  = reshape(scannerV(1:colums*rows)',rows,colums);
+            % mean apds1P
+            meanApds1P = squeeze(mean(apds1P,2));
+        % calculate covariance matrix.
+            errorXX = mean((stageX1P-mean(mean(stageX1P))-scannerXHP1P).^2,2)';
+            errorYY = mean((stageY1P-mean(mean(stageY1P))-scannerYHP1P).^2,2)';
+            errorXY = mean((stageX1P-mean(mean(stageX1P))-scannerXHP1P).*...
+                (stageY1P-mean(mean(stageY1P))-scannerYHP1P),2)';
+            errorMax = zeros(length(errorXX),1);
+            angle = zeros(length(errorXX),1);
+            for i = 1:length(errorXX)
+                covMatrix = [errorXX(i),errorXY(i);errorXY(i),errorYY(i)];
+                [V,D] = eig(covMatrix);
+                [varMax,indMax] = max(max(D));
+                errorMax(i) = sqrt(varMax);
+               V = V(:,indMax);
+               angle(i)=atan2(V(2),V(1))*180/pi;
+            end
+        % calculate count intensity
+            % compX = apds(:,1).*cosd(param.fbAngles(1)+param.fbAdditiveAngle) + ...
+            % apds(:,2).*cosd(param.fbAngles(2)+param.fbAdditiveAngle) + ...
+            % apds(:,3).*cosd(param.fbAngles(3)+param.fbAdditiveAngle);
+            % compY = apds(:,1).*sind(param.fbAngles(1)+param.fbAdditiveAngle) + ...
+            % apds(:,2).*sind(param.fbAngles(2)+param.fbAdditiveAngle) + ...
+            % apds(:,3).*sind(param.fbAngles(3)+param.fbAdditiveAngle);
+            % comp = sqrt(compX.^2+compY.^2);
+        % correlation between counts
+            window = 10; % window for moving average 1ms
+            apdMeanCorr =  apds-repmat(mean(apds),length(apds),1);
+            % correlation @ 0 lag of possible combinations of two count traces 
+            cc12 = corr0Lag(apdMeanCorr(:,1),apdMeanCorr(:,2),10);
+            cc13 = corr0Lag(apdMeanCorr(:,1),apdMeanCorr(:,3),10);
+            cc23 = corr0Lag(apdMeanCorr(:,2),apdMeanCorr(:,3),10);
+            % multiplying doubke correlatios
+            cc123 = cc12.*cc13.*cc23;
+            % correlation @ 0 lag of 3 count-traces simultaneously
+            cc123 = corr0Lag(apdMeanCorr(:,1),apdMeanCorr(:,2).*apdMeanCorr(:,3),window);
+        % std of counts
+            apdStd = std(apds,1,2);
+        % average counts 
+            % apdsAveraged = zeros(size(apds));
+            % for i=1:3
+            %    apdsAveraged(:,i) = conv(apds(:,i),ones(window,1)/window,'same');
+            % end
+        %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % draw figure -----------------------------------------------------
+        % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        figHandel2 = figHandle+ni;
+        
+        figure(figHandel2)
+        screen = get(0,'ScreenSize');
+        screen(2) = screen(4)*0.05;
+        screen(4) = screen(4)*0.95;
+        set(figHandel2,'OuterPosition',screen)
+                
+        % plot apd counts -------------------------------------------------
+        height = 0.16; % height of figure
+        height1 = 0.166;% height of placement of figure
+        width = 0.55;
+        ax2(1) = subplot('Position',[0 height1*5 0.55 height]);
+        plotColor = 'rgb';
+        hold all
+        for i=1:3
+            % plot(dataT,apdsAveraged(:,i),plotColor(i))
+            plot(dataT,apds(:,i),plotColor(i))
+        end
+        title(['Total Counts APD 1,2,3: ',num2str(round(sum(apds))),...
+            '. Mean: ',num2str(round(mean(apds))),' Counts @ ',...
+            num2str(round(1/(dataT(2)-dataT(1)))),' kHz'])  
+        grid on
+        hold off
+        ylabel('Counts')
+        xlabel('time [ms]')
+        axis tight
+        set(gca,'OuterPosition',[0 height1*5 0.55 0.16])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        % sum of counts
+            apdsSum = sum(apds,2);
+            ax2(2)=subplot('Position',[0 height1*4 0.55 0.2]);
+            plot(dataT,apdsSum,'k')
+            hold on
+            plot(dataT,ones(size(dataT))*3,'m')
+            hold off
+            grid on
+            title(['Total Counts: ',...
+                num2str(round(sum(sum(apds,2)))),'. Mean: ',...
+                num2str(round(mean(mean(apds,2)))),' Counts @ ',...
+            num2str(round(1/(dataT(2)-dataT(1)))),' kHz'])
+            ylabel('Counts')
+            xlabel('time [ms]')
+            axis tight
+            set(gca,'OuterPosition',[0 height1*4 0.55 0.2])
+            set(gca, 'LooseInset', get(gca,'TightInset'))
+            
+        % correlation
+            ax2(3)=subplot('Position',[0 height1*3 0.55 0.2]);
+            plot(dataT,cc123,'b')
+            grid on
+            title('Correlation @ 0 lag')
+            ylabel('Correlation')
+            xlabel('time [ms]')
+            axis tight
+            set(gca,'OuterPosition',[0 0.166*3 0.55 0.2])
+            set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+         % std of counts
+            ax2(4)=subplot('Position',[0 height1*2 0.55 0.2]);
+            plot(dataT,apdStd,'b')
+            grid on
+            title('Std of counts')
+            ylabel('Std')
+            xlabel('time [ms]')
+            axis tight
+            set(gca,'OuterPosition',[0 height1*2 0.55 0.2])
+            set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        % plot scanner and stage positions --------------------------------
+            ax2(5) = subplot('Position',[0 height1*1 0.55 0.2]);
+            plot(dataT,(stageX-mean(stageX)+scannerXLP-mean(scannerXLP))*10^3,'r')
+            hold on
+            plotBlueX = plot(dataT,(scannerX-mean(scannerX))*10^3,'b');
+            plot(dataT,(scannerXLP-mean(scannerXLP))*10^3,'k')
+            hold off
+            grid on
+            title('Scanner X')
+            ylabel('Position X [nm]')
+            xlabel('time [ms]')
+            axis tight
+            set(gca,'OuterPosition',[0 height1*1 0.55 0.2])
+            set(gca, 'LooseInset', get(gca,'TightInset'))
+
+            ax2(6) = subplot('Position',[0 0 0.55 0.2]);
+            plot(dataT,(stageY-mean(stageY)+scannerYLP-mean(scannerYLP))*10^3,'r')
+            hold on
+            plotBlueY = plot(dataT,(scannerY-mean(scannerY))*10^3,'b');
+            plot(dataT,(scannerYLP-mean(scannerYLP))*10^3,'k')
+            hold off
+            grid on
+            title('Scanner Y')
+            ylabel('Position Y [nm]')
+            xlabel('time [ms]')
+            axis tight
+            set(gca,'OuterPosition',[0 0 0.55 0.2])
+            set(gca, 'LooseInset', get(gca,'TightInset'))
+            % link axes
+            linkaxes(ax2,'x')
+            % add listener
+            dynamicY(ax2(1));
+            dynamicY(ax2(2));
+            dynamicY(ax2(3));
+            dynamicY(ax2(4));
+            dynamicY(ax2(5));
+            dynamicY(ax2(6));
+        % plot corrected square -------------------------------------------
+            % subplot('Position',[0 0 0.2 0.2])
+            % plot(sgolayfilt(scannerX-mean(scannerX)-errorXLP,2,11)*10^3,...
+            % sgolayfilt(scannerY-mean(scannerY)-errorYLP,2,11)*10^3,'b')
+            % title(['Corrected scanner trajectory. Tracked: ',...
+            %  num2str(round((dataT(end)-dataT(1))/10^2)/10),' sec.'])
+            % xlabel('X [nm]')
+            % ylabel('Y [nm]')
+            % axis tight
+            % daspect([1 1 1])
+            % set(gca,'OuterPosition',[0.06 0 0.48 0.48])
+            % set(gca, 'LooseInset', get(gca,'TightInset'))
+        % plot histogram --------------------------------------------------
+        subplot('Position',[0.575 0.551 0.44 0.44])
+        [Nhist, Chist] = hist3([1e3*(scannerX-mean(scannerX)-errorXLP)' 1e3*(scannerY-mean(scannerY)-errorYLP)']...
+            ,[1 1]*120 );
+        imagesc(Chist{2}, Chist{1},Nhist) 
+        daspect([1 1 1])
+        title(['Corrected scanner trajectory. Tracked: ',...
+            num2str(round((xlim(end)-xlim(1))/10^2)/10),' sec.'])
+        xlabel('X [nm]')
+        ylabel('Y [nm]')
+        colorbar
+        set(gca,'OuterPosition',[0.575 0.55 0.4 0.4])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+                
+        % draw trajectory -------------------------------------------------
+        subplot('Position',[0.575 0.05 0.4 0.4])
+        hold all
+        scannerYFiltered = sgolayfilt(scannerY-mean(scannerY),2,11)*1e3;
+        scannerXFiltered = sgolayfilt(scannerX-mean(scannerX),2,11)*1e3;
+        plotRed0 = plot(scannerXFiltered,scannerYFiltered,'b');
+        plotRed  = plot(scannerXFiltered,scannerYFiltered,'r','linewidth',2);
+        hold off
+        xlabel('position x [nm]')
+        ylabel('position y [nm]')
+        title('Scanner Trajectory')
+        daspect([1 1 1])
+        set(gca,'OuterPosition',[0.575 0.05 0.4 0.4])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        % change axes on Scanner trajectory
+        addlistener(ax2(1), 'XLim', 'PostSet', @scaleXY1 );
+        function scaleXY1(varargin)          
+            % dynamic subset of trace in red
+            try              
+                xTrajData = get(plotBlueX,'YData');
+                yTrajData = get(plotBlueY,'YData');
+                xTrajLim = get(ax2(5),'xlim');
+                xDataRng = dataT > xTrajLim(1) & dataT < xTrajLim(2);
+                set(plotRed,...
+                    'XData', xTrajData(xDataRng), ...
+                    'YData', yTrajData(xDataRng))
+                set(plotRed0,...
+                    'XData', xTrajData, ...
+                    'YData', yTrajData)
+            end
+        end
+                        
+        % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % create new figure -----------------------------------------------
+        figHandel3 = figHandel2+ni;
+        figure(figHandel3)
+        screen = get(0,'ScreenSize');
+        screen(2) = screen(4)*0.05;
+        screen(4) = screen(4)*0.95;
+        set(figHandel3,'OuterPosition',screen)
+        
+        % plot error ------------------------------------------------------
+        dataT_corrected = triggerEdges(1):1:triggerEdges(2);
+        subplot('Position',[0 0.2*4 0.4 0.15])
+        plot(dataT_corrected,mean(scannerXHP1P,2)*10^3,'r','LineWidth',2), hold all
+        plot(dataT_corrected,(mean(scannerXHP1P,2) + std(scannerXHP1P,[],2))*10^3,'r')
+        plot(dataT_corrected,(mean(scannerXHP1P,2) - std(scannerXHP1P,[],2))*10^3,'r')
+        plot(dataT_corrected,(mean(stageX1P,2)-mean(mean(stageX1P)))*10^3,'k','LineWidth',2),
+        title('Mean scannerX position [µm]')
+        xlabel('time [ms]')
+        ylabel('nm')
+        hold off
+        grid on
+        axis tight
+        set(gca,'OuterPosition',[0 0.2*4 0.4 0.2])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        subplot('Position',[0 0.2*3 0.4 0.15])
+        plot(dataT_corrected,mean(scannerYHP1P,2)*10^3,'b','LineWidth',2), hold all
+        plot(dataT_corrected,(mean(scannerYHP1P,2) + std(scannerYHP1P,[],2))*10^3,'b')
+        plot(dataT_corrected,(mean(scannerYHP1P,2) - std(scannerYHP1P,[],2))*10^3,'b')
+        plot(dataT_corrected,(mean(stageY1P,2)-mean(mean(stageY1P)))*10^3,'k','LineWidth',2),
+        title('Mean scannerY position [µm]')
+        xlabel('time [ms]')
+        ylabel('nm')
+        hold off
+        grid on
+        axis tight
+        set(gca,'OuterPosition',[0 0.2*3 0.4 0.2])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        subplot('Position',[0 0.2*0 0.4 0.15])
+        plot(dataT_corrected,meanApds1P)
+        title('Mean Counts.')
+        xlabel('time [ms]')
+        ylabel('counts')
+        hold off
+        grid on
+        axis tight
+        set(gca,'OuterPosition',[0 0.2*0 0.4 0.2])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+
+        subplot('Position',[0 0.2*2 0.4 0.15])
+        plot(dataT_corrected,std(scannerXHP1P,[],2)*10^3,'r'), hold all
+        plot(dataT_corrected,std(scannerYHP1P,[],2)*10^3,'b')
+        title('Precision of scanner movement.')
+        xlabel('time [ms]')
+        ylabel('precision [nm]')
+        hold off
+        grid on
+        axis tight
+        set(gca,'OuterPosition',[0 0.2*2 0.4 0.2])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        subplot('Position',[0 0.2*1 0.4 0.15])
+        plot(dataT_corrected,errorMax)
+        title('Accuracy of trace.')
+        xlabel('time [ms]')
+        ylabel('accuracy [nm]')
+        hold off
+        grid on
+        axis tight
+        set(gca,'OuterPosition',[0 0.2*1 0.4 0.2])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        colums = 4;
+        rows = length(meanApds1P(:,i))/colums;
+        slope = zeros(rows*colums,1);
+        countCicleApd = zeros(3,colums);
+        for i = 1:3
+            meanApdsQP = reshape(meanApds1P(:,i),rows,colums);
+            slopeQP = repmat(mean(meanApdsQP(round(end-0.2*rows):end,:)),rows,1);
+            dataTQP = repmat(dataT_corrected(1:rows)',1,colums);
+            meanApdsQP = reshape(meanApds1P(:,i),rows,colums);
+            cumMeanApdsQP = cumsum(meanApdsQP)-dataTQP.*slopeQP;
+            countCicleApd(i,:) = round(cumMeanApdsQP(end,:));
+            slope(:,i) = reshape(slopeQP,rows*colums,1);
+        end
+        
+        subplot('Position',[0.5 0 0.5 0.5])
+        plot(dataT_corrected,cumsum(meanApds1P)-...
+            dataT_corrected'*[1 1 1].*slope), hold all
+        totalCountsJumping = sum(cumsum(meanApds1P)-dataT_corrected'*[1 1 1].*slope,2);%-dataT_corrected'.*sum(slope,2);
+        plot(dataT_corrected,totalCountsJumping), hold off
+        title('Counts per jump.')
+        %         legend({['Apd1: ',num2str(countCicleApd(1,:))],...
+        %             ['Apd2: ',num2str(countCicleApd(2,:))],...
+        %             ['Apd3: ',num2str(countCicleApd(3,:))]},'Location','NorthWest')
+        legend({'Apd1','Apd2','Apd3',['Sum: ',num2str(sum(countCicleApd))]},'Location','NorthWest')
+        xlabel('time [ms]')
+        ylabel('counts')
+        hold off
+        grid on
+        axis tight
+        set(gca,'ylim',[0 max(totalCountsJumping)*1.1])
+        set(gca,'OuterPosition',[0.45 0 0.5 0.5])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        
+        % plot shifted error ----------------------------------------------
+        subplot('Position',[0.5 0.5 0.5 0.5])
+        plot([0,shiftVec],[mean(abs(errorXHP)),errorXshift']*10^3,'r','LineWidth',1)
+        hold on
+        plot([0,shiftVec],[mean(abs(errorYHP)),errorYshift']*10^3,'b','LineWidth',1)
+        plot(delayX,min(errorXshift)*10^3,'.r')
+        plot(delayY,min(errorYshift)*10^3,'.g')
+        hold off
+        grid on
+        legend({['Min errorX: ',num2str(round(min(errorXshift)*10^3)),' nm, @ ',num2str(delayX),' ms.'],...
+            ['Min errorY: ',num2str(round(min(errorXshift)*10^3)),' nm, @ ',num2str(delayY),' ms.']},'Location','NorthEast')
+        title(['Error using a time shift. Mean delay: ',...
+            num2str(delay),' ms.'])
+        xlabel('shift [ms]')
+        ylabel('mean of the error [nm]')
+        set(gca,'ylim',[0 max([errorXshift;errorYshift])*1.1*10^3])
+        set(gca,'OuterPosition',[0.45 0.5 0.5 0.5])
+        set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        % plot velocity - error histogram
+            % subplot('Position',[0.605 0.33 0.33 0.33])
+            % hist([errorXHP',scannerVx']*1/sqrt(2)*[-1;1],linspace(-.1,.1,100))
+            % xlabel('PC1')
+            % ylabel('Events')
+            % set(gca,'xlim',[-0.099 0.099])
+            % set(gca,'OuterPosition',[0.605 0.33 0.33 0.33])
+            % set(gca, 'LooseInset', get(gca,'TightInset'))
+        %         subplot('Position',[0.605 0 0.33 0.33])
+        %         hist([error',scannerV']*1/sqrt(2)*[1;1],linspace(0,.1,100))
+        %         xlabel('PC1')
+        %         ylabel('Events')
+        %         set(gca,'xlim',[0 0.099])
+        %         set(gca,'OuterPosition',[0.605 0 0.33 0.33])
+        %         set(gca, 'LooseInset', get(gca,'TightInset'))
+        
+        % %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+        % create new figure -----------------------------------------------
+        figHandel4 = figHandel3+ni;
+        figure(figHandel4)
+        screen = get(0,'ScreenSize');
+        screen(2) = screen(4)*0.05;
+        screen(4) = screen(4)*0.95;
+        set(figHandel4,'OuterPosition',screen)
+        
+        % Plotting CDFs --------------------------------------------------
+        timeStep = (dataT(2)-dataT(1))/1000; % in [s]
+        samplingPeriod = 0.005; % in [s]
+        dataPeriod = round(samplingPeriod/timeStep);
+        temp = [scannerX', scannerY']*1000; % Relative coordinates in [nm]
+        dCoords = temp(1+dataPeriod:dataPeriod:end,1:2) - temp(1:dataPeriod:end-dataPeriod,1:2);
+        % Calculate steplengths
+        stepLengths = sqrt(sum(dCoords.^2,2)); % sqrt(dx^2+dy^2)
+        [xAll, fAll, paramAll1, paramAll] = fitCDF(stepLengths, samplingPeriod, 0)
+        % Plot the CDF in an Analyze window
+        subplot('Position',[0.65 0.1 0.3 0.4])
+        hold on
+        [f, x]=hist(stepLengths, 50);
+        bar(x, f/max(f), 'FaceColor', [0.8 0.8 0.8], 'EdgeColor', 'w');
+        plot(xAll, fAll, 'Linewidth', 1.5);
+        title('CDF XY');
+        xlabel('Step length [nm]');
+        ylabel('Cumulative probability');
+        
+        % Plot the 1 state fitted function --------------------------------
+        % Plot all the fitted functions
+        fplot(@(x) 1-exp(-x.^2./(4*paramAll1(2)*samplingPeriod)), [0 max(stepLengths)], '--k')
+        set(findobj(gca, 'Type', 'Line', 'Color', 'k'), 'LineWidth', 1.5);
+        % Write data in the plot
+        text(0.35, 0.55, strcat('1 state model fit:'), 'Units', 'normalized', 'FontWeight', 'demi')
+        text(0.35, 0.5, strcat('D = ', num2str(paramAll1(2)/1e6, 3), ' \mum^2/s'), 'Units', 'normalized')
+        
+        % Plot the 2 states fitted function -------------------------------
+        % Plot all the fitted functions
+        fplot(@(x) 1-paramAll(1)*exp(-x.^2./(4*paramAll(2)*samplingPeriod))-(1-paramAll(1))*exp(-x.^2./(4*paramAll(3)*samplingPeriod)), [0 max(stepLengths)], '.r')
+        set(findobj(gca, 'Type', 'Line', 'Color', 'r'), 'LineWidth', 1.5);
+        % Write data in the plot
+        text(0.35, 0.40, strcat('2 state model fit:'), 'Units', 'normalized', 'FontWeight', 'demi')
+        text(0.35, 0.35, strcat('D1* = ', num2str(paramAll(2)/1e6, 3), ' \mum^2/s'), 'Units', 'normalized')
+        text(0.35, 0.3, strcat('D2* = ', num2str(paramAll(3)/1e6, 3), ' \mum^2/s'), 'Units', 'normalized')
+        if paramAll(2)>paramAll(3)
+            text(0.35, 0.25, strcat('Fractions all data (slow/fast) = ', num2str(1-paramAll(1), 3), '/', num2str(paramAll(1), 3)), 'Units', 'normalized')
+        else
+            text(0.35, 0.25, strcat('Fractions all data (slow/fast) = ', num2str(paramAll(1), 3), '/', num2str(1-paramAll(1), 3)), 'Units', 'normalized')
+        end
+        
+        text(0.65, 0.15, strcat('Total steps used: ', num2str(length(stepLengths))), 'Units', 'normalized');
+        text(0.65, 0.10, strcat('Sampling time: ', num2str(samplingPeriod*1000), ' ms'), 'Units', 'normalized');
+        legend('SL histogram', 'CDF All','Fit 1 state', 'Fit 2 states','Location','NE');
+        
+        hold off
+        
+        clear temp timeStep dataPeriod samplingPeriod dCoords
+               
+        
+    end
+end
