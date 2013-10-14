@@ -12,6 +12,8 @@ if ishandle(figHandle)
     close(figHandle)
 end
 
+evalin('base', 'clear data ni imageStack param pt3*');
+
 %% Open file %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clc
 track_filename = get_cf_highlight; %get filename from Current Folder Explorer
@@ -393,7 +395,26 @@ lbFilt2 = uicontrol(...
     'BackgroundColor',0.8*[1 1 1]...
     );
 
+%% Set time interval to observe
+edCountHist = uicontrol(...
+    'Tag', 'main_edHist',...
+    'Style','Edit',...
+    'String','50',...
+    'Units','Normalized',...
+    'Position',[0.85, 0.455, 0.02 0.03],...
+    'Callback',{@traceNumCallback, gcf},...
+    'BackgroundColor',0.8*[1 1 1]...
+    );
+lbCountHist = uicontrol(...
+    'Style','Text',...
+    'String',['[ms]'],...
+    'Units','Normalized',...
+    'Position',[0.87, 0.456, 0.02 0.02],...
+    'BackgroundColor',0.8*[1 1 1]...
+    );
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Draw everything once and link plot axes %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 val = str2double(get(puFilter, 'Value'));
 if val == 1
@@ -433,7 +454,9 @@ end
 
 %% Choose what trace/trajectory that should be studied
 function traceNumCallback(hndl, ~, fHndl)
-ni = round(get(hndl, 'Value'));
+%ni = round(get(hndl, 'Value'));
+ni = round(get(findobj(fHndl, 'Tag', 'main_slTraceNum'), 'Value'));
+
 track_filename = get(fHndl, 'UserData');
 [data, param, imageStack, ni, ~] = track_open_single_hdf5(track_filename, ni, 1);
 assignin('base', 'data', data);
@@ -830,7 +853,9 @@ data = evalin('base', 'data');
 param = evalin('base', 'param');
 
 % Write whatever code you want to try out....
-
+temp = imread('loglog.m');
+figure; image(temp);
+clear temp;
 
 
 end

@@ -38,8 +38,24 @@ BP = '/Beam Position';
 
 % h5disp(filename)
 
+try
+    info = h5info(filename);
+catch
+    [filename, pathname] = uigetfile({'*.h5', 'HDF (*.h5)'}, 'Select tracking file (HDF format)');
+     if ( filename == 0 )
+        filename = 0;
+        pathname = 0;
+        error('No valid HDF file selected!')
+        return
+     else
+         filename = [ pathname, filename ];
+         info = h5info(filename);
+     end
+    
+    
+end
 
-info = h5info(filename);
+
 % First guesses
 ImInd = 1;
 dataInd = 2;

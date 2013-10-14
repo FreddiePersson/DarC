@@ -167,16 +167,17 @@ linkaxes(ax,'x');
 % addlistener(ax(2), 'XLim', 'PostSet', @(src, event)scaleXYCallback(src, event, ax(2), gcf));
 
 %% Histogram of counts
-% temporary inclusion (hard coded)
-filtConstant = 500;
-apdCountsSumFiltered = conv(sum(apdCounts,2),ones(1,filtConstant)./sum(ones(1,filtConstant)),'same');
+
+filtConstant = str2num(get(findobj(gcf, 'Tag', 'main_edHist'), 'String')); % in ms
+filtCoeff = filtConstant/(dataT(2)-dataT(1)); 
+apdCountsSumFiltered = conv(sum(apdCounts,2),ones(1,filtCoeff)./sum(ones(1,filtCoeff)),'same');
 hold(ax(1), 'on'); 
-plot(ax(1), dataT, apdCountsSumFiltered, 'k'); drawnow
+plot(ax(1), dataT, apdCountsSumFiltered, 'k');
 hold(ax(1), 'off'); 
 subplot(2,2,4)
 hist(apdCountsSumFiltered,100)
 xlabel('Counts [kHz]')
-title(['Averaged APD-counts. Averaging: ',num2str(filtConstant/10),' ms'])
+title(['Averaged APD-counts. Averaging: ',num2str(filtConstant),' ms'])
 
 
 end
