@@ -12,6 +12,8 @@ if ishandle(figHandle)
     close(figHandle)
 end
 
+evalin('base', 'clear data ni imageStack param pt3*');
+
 %% Open file %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clc
 track_filename = get_cf_highlight; %get filename from Current Folder Explorer

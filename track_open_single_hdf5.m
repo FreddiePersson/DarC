@@ -41,11 +41,11 @@ BP = '/Beam Position';
 try
     info = h5info(filename);
 catch
-    [filename, pathname] = uigetfile({'*.h5; *.tif', 'HDF (*.h5)'}, 'Select tracking file (HDF format)');
+    [filename, pathname] = uigetfile({'*.h5', 'HDF (*.h5)'}, 'Select tracking file (HDF format)');
      if ( filename == 0 )
-        disp('Error! No (or wrong) file selected!')
         filename = 0;
         pathname = 0;
+        error('No valid HDF file selected!')
         return
      else
          filename = [ pathname, filename ];
