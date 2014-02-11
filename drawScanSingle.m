@@ -3,7 +3,7 @@ function [ax] = drawScanSingle(data, cond, filt, subSampl)
 
 %% Settings %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% preallocare variables:
+% preallocate variables:
 dataT = data{1}.t*1e3;
 
 % Time selection
@@ -14,13 +14,17 @@ dataT = data{1}.t*1e3;
 timeRange = [0, max(data{1}.t)*1e3];
 
 % The sampling step to use
-samplStep = ceil((max(dataT)-min(dataT))/subSampl);
-
+% samplStep = ceil((max(dataT)-min(dataT))/subSampl);
+samplStep = 1;
 
 %% APD Counts %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 ax(1) = subplot(423);
-plotColor = 'rgb';
+% plotColor = 'rgb';
+plotColor = [
+    1 0 0
+    0 0.5 0
+    0 0 1];
 
 apdCounts = data{1}.apds.*cond.controllerUpdateClock./1e3;
 % offset = [zeros(size(apdsScaled(:,1))),...
@@ -29,12 +33,19 @@ apdCounts = data{1}.apds.*cond.controllerUpdateClock./1e3;
 
 for i = 1:size(apdCounts,2)
     apds_Filt = filterData(apdCounts, filt);
-    h = plot(dataT(1:samplStep:end), apds_Filt(1:samplStep:end, i), plotColor(i), 'Tag', ['apd' num2str(i) 'Plot']);
+    h = stem(dataT(1:samplStep:end), apds_Filt(1:samplStep:end, i),...
+        'Color',plotColor(i,:), ...
+        'Tag', ['apd' num2str(i) 'Plot'],...
+        'Marker','none',...
+        'LineStyle','-');
     hold all
     set(h, 'UserData', [dataT, apdCounts]);
 end
 
-plot([0 max(dataT)], cond.fbThresholdValue.*[1 1]./1e3, 'c', 'LineWidth', 2); %threshold line
+% TODO: sum of counts is not calculated here, but at the end next to the
+% histogram part. It should be here with the global filters.
+
+% plot([0 max(dataT)], cond.fbThresholdValue.*[1 1]./1e3, 'c', 'LineWidth', 2); %threshold line
 hold off;
 grid on
 title('APDs Counts');
@@ -46,47 +57,58 @@ hold off
 
 
 %% Scanner X %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ax(2) = subplot(4,2,5);
 
-ax(2) = subplot(425);
-
-scannerX_Filt = filterData(data{1}.scannerX*1e3, filt);
+ 
+% scannerX_Filt = filterData(data{1}.scannerX*1e3, filt);  % Filter data (For the moment disabled)
+scannerX_Filt = data{1}.scannerX*1e3;
+plot(...
+    dataT(1:samplStep:end), scannerX_Filt(1:samplStep:end), 'b',...
+    'Tag', 'scannerXPlot',...
+    'UserData', [dataT, data{1}.scannerX*1e3]);
 hold all
-h = plot(dataT(1:samplStep:end), scannerX_Filt(1:samplStep:end), 'b', 'Tag', 'scannerXPlot');
-set(h, 'UserData', [dataT, data{1}.scannerX*1e3]);
-grid on
+
 stageX = (data{1}.stageX)*1e3;
 stageX = (stageX-(median(stageX)-median(scannerX_Filt)));
-h = plot(dataT(1:samplStep:end), stageX(1:samplStep:end)', 'r', 'Tag', 'stageXPlot'); 
-set(h, 'UserData', [dataT, stageX])
+plot(...
+    dataT(1:samplStep:end), stageX(1:samplStep:end)', 'r',...
+    'Tag', 'stageXPlot',...
+    'UserData', [dataT, stageX]); 
+
+hold off
+grid on
+axis tight
 
 ylabel('Scanner Position X [nm]');
-axis tight
-set(gca,'Tag','linkX_x');
-% ylim('manual')
-hold off
 
-
+set(gca,'Tag','linkX_x')
 %% Scanner Y %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 ax(3) = subplot(4,2,7);
 
-scannerY_Filt = filterData(data{1}.scannerY*1e3, filt);
+
+% Filter data (For the moment disabled)
+% scannerY_Filt = filterData(data{1}.scannerY*1e3, filt);
+scannerY_Filt = data{1}.scannerY*1e3;
+plot(...
+    dataT(1:samplStep:end), scannerY_Filt(1:samplStep:end), 'b',...
+    'Tag', 'scannerYPlot',...
+    'UserData', [dataT, data{1}.scannerY*1e3]);
 hold all
-h = plot(dataT(1:samplStep:end), scannerY_Filt(1:samplStep:end), 'b', 'Tag', 'scannerYPlot');
-set(h, 'UserData', [dataT, data{1}.scannerY*1e3])
-grid on
+
 stageY = (data{1}.stageY)*1e3;
 stageY = (stageY-(median(stageY)-median(scannerY_Filt)));
-h = plot(dataT(1:samplStep:end), stageY(1:samplStep:end)', 'r', 'Tag', 'stageYPlot'); 
-set(h, 'UserData', [dataT, stageY])
+plot(...
+    dataT(1:samplStep:end), stageX(1:samplStep:end)', 'r',...
+    'Tag', 'stageYPlot',...
+    'UserData', [dataT, stageY]); 
 
-xlabel('Time [ms]');
-ylabel('Scanner Position Y [nm]');
-axis tight
-set(gca,'Tag','linkX_y');
-% ylim('manual')
 hold off
+grid on
+axis tight
 
+ylabel('Scanner Position Y [nm]');
+
+set(gca,'Tag','linkX_y');
 %% Digital trigger signals
 
 % ax(4) = subplot(423);
@@ -162,17 +184,18 @@ title('Scanner trajectory')
 daspect([1 1 1])
 set(gca,'Tag','adjustXY')
 % ylim('manual')
-axis square
+axis equal
 linkaxes(ax,'x');
 % addlistener(ax(2), 'XLim', 'PostSet', @(src, event)scaleXYCallback(src, event, ax(2), gcf));
 
 %% Histogram of counts
 
 filtConstant = str2num(get(findobj(gcf, 'Tag', 'main_edHist'), 'String')); % in ms
-filtCoeff = filtConstant/(dataT(2)-dataT(1)); 
+filtCoeff = filtConstant/(dataT(2)-dataT(1));
 apdCountsSumFiltered = conv(sum(apdCounts,2),ones(1,filtCoeff)./sum(ones(1,filtCoeff)),'same');
+% TODO: this average should not be calculated here.
 hold(ax(1), 'on'); 
-plot(ax(1), dataT, apdCountsSumFiltered, 'k');
+plot(ax(1), dataT, apdCountsSumFiltered, 'k','linewidth',2);
 hold(ax(1), 'off'); 
 subplot(2,2,4)
 hist(apdCountsSumFiltered,100)

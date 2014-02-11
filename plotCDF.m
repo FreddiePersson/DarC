@@ -19,10 +19,12 @@ function [paramAll1, paramAll] = plotCDF(coords, timeStep, samplingPeriod)
         dCoords = coords(1+dataPeriod:dataPeriod:end,1:2) - coords(1:dataPeriod:end-dataPeriod,1:2);
         % Calculate steplengths
         stepLengths = sqrt(sum(dCoords.^2,2)); % sqrt(dx^2+dy^2)
-        figH = figure;
+        figH = figure('position',[624 474 550 350]);
         hold on
         try
+            warning off
             [xAll, fAll, paramAll1, paramAll] = fitCDF(stepLengths, samplingPeriod, 0);
+            warning on
             % Plot the CDF
             [f, x] = hist(stepLengths, 50);
             bar(x, f/max(f), 'FaceColor', [0.8 0.8 0.8], 'EdgeColor', 'w');

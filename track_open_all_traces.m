@@ -25,15 +25,18 @@
 %          - controlP
 %          - controllerUpdateClock
 
-function [data, conditions, imageStack, ind, numTraces] = track_open_single_hdf5(filename, ind, direction)
+function [data, numTraces, paramList] = track_open_all_traces(filename)
 
-clearvars -except 'filename' 'ind' 'direction' 'ni'
+% clearvars -except 'filename' 'ind' 'direction' 'ni'
 
+% Groups
 PARAMETER = '/parameters';
 DATA = '/data';
 TRACE = '/trace';
-STACK = '/Stack';
 IMAGE = '/Images';
+
+% Elements
+STACK = '/Stack';
 BP = '/Beam Position';
 
 % h5disp(filename)
@@ -51,25 +54,23 @@ catch
          filename = [ pathname, filename ];
          info = h5info(filename);
      end
-    
-    
 end
 
 
-% First guesses
-ImInd = 1;
-dataInd = 2;
-paramInd = 3;
-imageStack = zeros(10, 10);
+% % First guesses
+% ImInd = 1;
+% dataInd = 2;
+% paramInd = 3;
+% imageStack = zeros(10, 10);
 
 % Find out the truth
 for i =1: length(info.Groups)
     switch info.Groups(i).Name
         case '/Images'
             ImInd = i;
-            %% read in the imageStack and beam position
-            imageStack = h5read(filename, [IMAGE STACK]);
-            conditions.beamPos = h5read(filename, [IMAGE BP]);
+%             %% read in the imageStack and beam position
+%             imageStack = h5read(filename, [IMAGE STACK]);
+%             conditions.beamPos = h5read(filename, [IMAGE BP]);
         case '/data'
             dataInd = i;
         case '/parameters'
@@ -79,11 +80,11 @@ end
 
 %% Check if requested track is available
 numTraces = length(info.Groups(dataInd).Datasets);
-if ind > numTraces
-h = warndlg(['Track number ' num2str(ind-1) ' is the last track.'], 'End of file');
-uiwait(h);
-ind = ind-1;
-end
+% if ind > numTraces
+% h = warndlg(['Track number ' num2str(ind-1) ' is the last track.'], 'End of file');
+% uiwait(h);
+% ind = ind-1;
+% end
 
 %% Read in the parameters
 numParams = length( info.Groups(paramInd).Datasets); 
@@ -97,40 +98,53 @@ for i = 1:numParams
 end;
 
 
-%% read in the trace data etc
-data = cell(1, 1);
+%% read in the traces data etc
+data = cell(numTraces, 1);
 
-trace_name = sprintf([DATA TRACE '%d'], ind-1);
-traj = h5read(filename,  trace_name);
+for i=1:numTraces
+    disp(['Opening trace ' num2str(i) ' of ' num2str(numTraces)])
+    trace_name = sprintf([DATA TRACE '%d'], i-1);
+    traj = h5read(filename,  trace_name);
+    traj.nPoints = length(traj.scannerX);
+    traj.t = (0:traj.nPoints-1)'/conditions.controllerUpdateClock;  % Time axis
+    traj.apds = [traj.apd1 traj.apd2 traj.apd3];
+    traj.apdsNorm = traj.apds / max(traj.apds(:));
+    traj.scanParam = conditions.scanParametersList.loopParameter(i, :);
+    data{i} = traj;
+end
+paramList = conditions.scanParametersList;
+
+% trace_name = sprintf([DATA TRACE '%d'], ind-1);
+% traj = h5read(filename,  trace_name);
 
 % [traj,~] = h5readc(filename,trace_name,[],[],[]);
 
-traj.aoX = traj.aoX;
-traj.aoY = traj.aoY;
-traj.idx = ind;
+% traj.aoX = traj.aoX;
+% traj.aoY = traj.aoY;
+% traj.idx = ind;
 
 
-while isempty(traj.aoX)
-    h = warndlg(['Trace ' num2str(ind) ' is empty.'],'Empty datastructure');
-    uiwait(h);    
-    if direction == 1
-        ind = ind+1;
-    elseif direction == 0
-        ind = ind-1;
-    end
-    trace_name = sprintf([DATA TRACE '%d'], ind-1);
-    traj = h5read(filename,  trace_name);
-    traj.aoX = traj.aoX;
-    traj.aoY = traj.aoY;
-    traj.idx = ind;
-
-end
-
-traj.nPoints = length(traj.scannerX);
-traj.t = (0:traj.nPoints-1)'/conditions.controllerUpdateClock;  % Time axis
-traj.apds = [traj.apd1 traj.apd2 traj.apd3];
-traj.apdsNorm = traj.apds / max(traj.apds(:));
-data{1} = traj;
+% while isempty(traj.aoX)
+%     h = warndlg(['Trace ' num2str(ind) ' is empty.'],'Empty datastructure');
+%     uiwait(h);    
+%     if direction == 1
+%         ind = ind+1;
+%     elseif direction == 0
+%         ind = ind-1;
+%     end
+%     trace_name = sprintf([DATA TRACE '%d'], ind-1);
+%     traj = h5read(filename,  trace_name);
+%     traj.aoX = traj.aoX;
+%     traj.aoY = traj.aoY;
+%     traj.idx = ind;
+% 
+% end
+% 
+% traj.nPoints = length(traj.scannerX);
+% traj.t = (0:traj.nPoints-1)'/conditions.controllerUpdateClock;  % Time axis
+% traj.apds = [traj.apd1 traj.apd2 traj.apd3];
+% traj.apdsNorm = traj.apds / max(traj.apds(:));
+% data{1} = traj;
 
 
 end

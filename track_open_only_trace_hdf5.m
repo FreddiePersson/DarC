@@ -25,7 +25,7 @@
 %          - controlP
 %          - controllerUpdateClock
 
-function [data, conditions, imageStack, ind, numTraces] = track_open_single_hdf5(filename, ind, direction)
+function [data, ind, numTraces] = track_open_only_trace_hdf5(filename, ind, direction)
 
 clearvars -except 'filename' 'ind' 'direction' 'ni'
 
@@ -67,9 +67,6 @@ for i =1: length(info.Groups)
     switch info.Groups(i).Name
         case '/Images'
             ImInd = i;
-            %% read in the imageStack and beam position
-            imageStack = h5read(filename, [IMAGE STACK]);
-            conditions.beamPos = h5read(filename, [IMAGE BP]);
         case '/data'
             dataInd = i;
         case '/parameters'
@@ -85,24 +82,25 @@ uiwait(h);
 ind = ind-1;
 end
 
-%% Read in the parameters
-numParams = length( info.Groups(paramInd).Datasets); 
-for i = 1:numParams
-    name = info.Groups(paramInd).Datasets(i).Name;
-    if ~strcmpi(info.Groups(paramInd).Datasets(i).Datatype.Class, 'H5T_ENUM')
-        conditions.(name) = h5read(filename, [PARAMETER '/' name]);
-    else
-           % Ignore boolean parameters
-    end;
-end;
+% %% Read in the parameters
+% numParams = length( info.Groups(paramInd).Datasets); 
+% for i = 1:numParams
+%     name = info.Groups(paramInd).Datasets(i).Name;
+%     if ~strcmpi(info.Groups(paramInd).Datasets(i).Datatype.Class, 'H5T_ENUM')
+%         conditions.(name) = h5read(filename, [PARAMETER '/' name]);
+%     else
+%            % Ignore boolean parameters
+%     end;
+% end;
 
 
 %% read in the trace data etc
 data = cell(1, 1);
 
 trace_name = sprintf([DATA TRACE '%d'], ind-1);
+tic
 traj = h5read(filename,  trace_name);
-
+toc 
 % [traj,~] = h5readc(filename,trace_name,[],[],[]);
 
 traj.aoX = traj.aoX;
@@ -125,6 +123,8 @@ while isempty(traj.aoX)
     traj.idx = ind;
 
 end
+
+conditions = evalin('base','param');
 
 traj.nPoints = length(traj.scannerX);
 traj.t = (0:traj.nPoints-1)'/conditions.controllerUpdateClock;  % Time axis

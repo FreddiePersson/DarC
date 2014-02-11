@@ -218,8 +218,8 @@ trigger = trigger(x1Ind:x2Ind);
 %             hold off
             grid on
             title(['Total Counts: ',...
-                num2str(round(sum(sum(apdCounts, 2)))), '. Mean: ',...
-                num2str(round(mean(mean(apdCounts, 2)))), ' Counts @ ',...
+                num2str(round(sum(apdCountSum))), '. Mean: ',...
+                num2str(round(mean(apdCountSum))), ' Counts @ ',...
             num2str(round(1/(dataT(2)-dataT(1)))), ' kHz'])
             ylabel('Counts')
             xlabel('time [ms]')
@@ -498,5 +498,5 @@ trigger = trigger(x1Ind:x2Ind);
 %                 set(gca,'OuterPosition',[0.605 0 0.33 0.33])
 %                 set(gca, 'LooseInset', get(gca,'TightInset'))
 
-   close(figHndl)     
+%    close(figHndl)     
 end

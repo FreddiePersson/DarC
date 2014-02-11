@@ -1,4 +1,4 @@
-function [] = drawImageOverlay(image, beamPos, magn, coords)
+function [] = drawImageOverlay(image, beamPos, magn, coords, startIndex)
 % Draws tracking coordinates from a scanning beam on an image
 % 
 % INPUT:
@@ -15,18 +15,37 @@ figHndl = figure;
 hold all
 vecX = (1:size(image, 2))*magn;
 vecY = (1:size(image, 1))*magn;
-imagesc(vecX,vecY,image);
 colormap('gray');
 beamX = beamPos(1)*magn;
 beamY = beamPos(2)*magn;
-plot(beamX, beamY, '*k')
-plot((coords(:, 1)-coords(1, 1))./1e3+beamX, (coords(:, 2)-coords(1, 2))./1e3+beamY, '-r');
-plot((coords(:, 1))./1e3+beamX, (coords(:, 2))./1e3+beamY, '-g');
+
+% xOffset =  15.0e3;
+% yOffset = -14.5e3;
+
+xOffset = 0;
+yOffset = 0;
+
+imagesc(vecX,vecY, image);
+% plot(...
+%     -(coords(:, 1)-coords(startIndex, 1))./1e3 + beamX, ...
+%     -(coords(:, 2)-coords(startIndex, 2))./1e3 + beamY, ...
+%     '-r');
+
+plot(...
+    -(coords(:, 1)-xOffset)./1e3 + beamX, ...
+    -(coords(:, 2)-yOffset)./1e3 + beamY, ...
+    '-r');
+
+
+plot(beamX, beamY, '+b', 'linewidth',2)
+% plot((coords(:, 1))./1e3+beamX, (coords(:, 2))./1e3+beamY, '-g');
 title('Image of Bacteria with trace')
 xlabel('um')
 ylabel('um')
-set(gca,'xlim',[beamPos(1)*magn-15 beamPos(1)*magn+15],'ylim',...
-    [beamPos(2)*magn-15 beamPos(2)*magn+15])
+overlaySize = 7; %[um]
+% set(gca,...
+%     'xlim',[beamPos(1)*magn-overlaySize/2 beamPos(1)*magn+overlaySize/2],...
+%     'ylim',[beamPos(2)*magn-overlaySize/2 beamPos(2)*magn+overlaySize/2])
 daspect([1 1 1])
 
 end

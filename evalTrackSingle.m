@@ -18,6 +18,8 @@ evalin('base', 'clear data ni imageStack param pt3*');
 clc
 track_filename = get_cf_highlight; %get filename from Current Folder Explorer
 track_filename = track_filename{1};
+% TODO: filter selected files by extension. The order of selection does not
+% affect get_cf_highlight behavior.
 disp(['Loading ''' track_filename '''...'])
 [data, param, imageStack, ni, numTraces] = track_open_single_hdf5(track_filename, 1, 1);
 assignin('base', 'data', data);
@@ -66,6 +68,7 @@ ctrlPos.lbFilt1 = [xPos(1)+0.13 0.95 xSize(5) ySize-0.005];
 ctrlPos.lbFilt2 = [xPos(1)+0.18 0.95 xSize(5) ySize-0.005];
 ctrlPos.lbSubSampling = [xPos(1) 0.845 xSize(5)*2.5 ySize];
 ctrlPos.adjustSubSampling = [xPos(1)+0.13 0.85 xSize(5) ySize];
+ctrlPos.lbSubSamplingFactor = [xPos(1) 0.80 xSize(5)*2.5 ySize];
 
 set(gcf, 'UserData', [pwd filesep track_filename]);
 
@@ -272,6 +275,15 @@ edSubSampling = uicontrol(...
     'BackgroundColor',0.8*[1 1 1]...
     );
 
+lbSubSamplingFactor = uicontrol(...
+    'Style','Text',...
+    'Tag', 'main_lbSubSamplingFactor',...
+    'String',['Subsampling factor:'],...
+    'Units','Normalized',...
+    'Position',ctrlPos.lbSubSamplingFactor,...
+    'BackgroundColor',0.8*[1 1 1]...
+    );
+
 %% display triggering for kicks
 cbKicking = uicontrol(...
     'Style','Checkbox',...
@@ -305,7 +317,7 @@ edComment = uicontrol(...
 %% Set time interval to observe
 lbTime = uicontrol(...
     'Style','Text',...
-    'String',['Time adjutment [sec](<RET>)'],...
+    'String',['Time adjustment [sec](<RET>)'],...
     'Units','Normalized',...
     'Position',ctrlPos.lbTime,...
     'BackgroundColor',0.8*[1 1 1]...
@@ -329,27 +341,33 @@ lbTrace  = uicontrol(...
     'Position',ctrlPos.lbLine,...
     'BackgroundColor',0.8*[1 1 1]...
     );
-slTraceNum = uicontrol(...
-    'Tag', 'main_slTraceNum',...
-    'Style','slider',...
-    'Min',1,'Max',numTraces,'Value',1,...
-    'Units','Normalized',...
-    'Position',ctrlPos.lbSlider,...
-    'Callback',{@traceNumCallback, gcf}...
-    );
-% Only allow integer steps
-set(slTraceNum, 'SliderStep', [1, 1]/(numTraces - 1));
-set(slTraceNum, 'Value', 1);
-% Listen to it dynamically
-hL1 = handle.listener(slTraceNum, 'ActionEvent',...
+if numTraces > 1 % slider only if more than 1 trace are present
+    slTraceNum = uicontrol(...
+        'Tag', 'main_slTraceNum',...
+        'Style','slider',...
+        'Min',0,'Max',numTraces,'Value',1,...
+        'Units','Normalized',...
+        'Position',ctrlPos.lbSlider,...
+        'Callback',{@traceNumCallback, gcf}...
+        );
+    % Only allow integer steps
+    % if numTraces > 1
+    set(slTraceNum, 'SliderStep', [1, 1]/(numTraces - 1));
+    % else
+    %     set(slTraceNum, 'SliderStep', [1, 1]);
+    % end
+    set(slTraceNum, 'Value', 1);
+    % Listen to it dynamically
+    hL1 = handle.listener(slTraceNum, 'ActionEvent',...
     @(src, event)dynSliderCallback(src, event, gcf));
+end
 
 %% Filtering of displayed data
 puFilter  = uicontrol(...
     'Style','Popup',...
     'Tag', 'main_puFilter',...
     'String','SavitskyGolay|MovingAverage|None',...
-    'Value', 1,...
+    'Value', 2,...
     'Units','Normalized',...
     'Position',ctrlPos.puFilter,...
     'Callback',{@filterCallback, gcf},...
@@ -434,7 +452,11 @@ hAx = handle(ax(1));
 hProp = findprop(hAx, 'XLim');
 hL2 = handle.listener(hAx, hProp, 'PropertyPostSet',...
     @(src, event)scaleXYCallback(src, event, gcf));
-setappdata(gcf, 'myListeners', {hL1 hL2});  
+if numTraces > 1
+    setappdata(gcf, 'myListeners', {hL1 hL2});  
+else
+    setappdata(gcf, 'myListeners', {hL2});  
+end
 
 zoom on
 
@@ -454,16 +476,15 @@ end
 
 %% Choose what trace/trajectory that should be studied
 function traceNumCallback(hndl, ~, fHndl)
-%ni = round(get(hndl, 'Value'));
-ni = round(get(findobj(fHndl, 'Tag', 'main_slTraceNum'), 'Value'));
 
+ni = round(get(findobj(fHndl, 'Tag', 'main_slTraceNum'), 'Value'));
 track_filename = get(fHndl, 'UserData');
-[data, param, imageStack, ni, ~] = track_open_single_hdf5(track_filename, ni, 1);
-assignin('base', 'data', data);
-assignin('base', 'param', param);
+
+[data, ni, ~] = track_open_only_trace_hdf5(track_filename, ni, 1); %Only the current trace is read from the file, not the image or the parameter structure.
+assignin('base', 'data', data); % Data and traces number are written to base.
 assignin('base', 'ni', ni);
-assignin('base', 'imageStack', imageStack);
 set(hndl, 'Value', ni);
+
 val = get(findobj(fHndl, 'Tag', 'main_puFilter'), 'Value');
 if val == 1
     filt.Name = 'S-G';
@@ -472,6 +493,9 @@ elseif val == 2
 else
     filt.Name = 'none';
 end
+
+param = evalin('base','param');
+
 filt.Param = [str2double(get(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String')),...
     str2double(get(findobj(fHndl, 'Tag', 'main_edFilt2'), 'String'))];
 arrayfun(@(x) cla(x, 'reset'), findall(fHndl,'type','axes'));
@@ -492,30 +516,42 @@ end
 %% Sets the length of the moving average filter used for scanners & APDs
 
 function filterCallback(~, ~, fHndl)
-filt.Param = [str2double(get(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String')),...
+% Obtain filter parameters (window/order)
+filt.Param = [...
+    str2double(get(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String')),...
     str2double(get(findobj(fHndl, 'Tag', 'main_edFilt2'), 'String'))];
 
-val = get(findobj(fHndl, 'Tag', 'main_puFilter'), 'Value');
-if val == 1
-    filt.Name = 'S-G';
-    if mod(filt.Param(1), 2) == 0
-        filt.Param(1) = filt.Param(1)+1;
-        set(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String', num2str(filt.Param(1)));
-    elseif filt.Param(1) == 1
-        set(findobj(fHndl, 'Tag', 'main_puFilter'), 'Value', 3);
+% Obtain type of filter
+filterType = get(findobj(fHndl, 'Tag', 'main_puFilter'), 'Value');
+switch filterType
+    case 1
+        filt.Name = 'S-G';
+        if mod(filt.Param(1), 2) == 0
+            filt.Param(1) = filt.Param(1)+1;
+            set(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String', num2str(filt.Param(1)));
+        elseif filt.Param(1) == 1
+            set(findobj(fHndl, 'Tag', 'main_puFilter'), 'Value', 3);
+            filt.Name = 'none';
+        end
+    case 2
+        filt.Name = 'moveAv';
+    otherwise
         filt.Name = 'none';
-    end      
-elseif val == 2
-    filt.Name = 'moveAv';
-else
-    filt.Name = 'none';
 end
-filt.Param = [str2double(get(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String')),...
+
+% Obtain again filter parameters
+filt.Param = [...
+    str2double(get(findobj(fHndl, 'Tag', 'main_edFilt1'), 'String')),...
     str2double(get(findobj(fHndl, 'Tag', 'main_edFilt2'), 'String'))];
 
+% Retrieve data from base 
 data = evalin('base', 'data');
 param = evalin('base', 'param');
+
+% Clear axes
 arrayfun(@cla,findall(fHndl,'type','axes'));
+
+% Redraw
 drawScanSingle(data, param, filt,...
     str2double(get(findobj(fHndl, 'Tag', 'main_edSubSampling'), 'String')));
 end
@@ -526,7 +562,9 @@ end
 function overlayCallback(~, ~, fHndl)
 %% read in things
 param = evalin('base', 'param');
+
 imageStack = evalin('base', 'imageStack');
+startIndex = evalin('base', 'find(abs(diff(data{1}.isFeedbackEnabled)))'); 
 
 %% sort out the important things
 beamPos = param.beamPos;
@@ -544,7 +582,7 @@ try
     % the overlay. Here raw data is used
     coords = get(findobj(fHndl, 'Tag', 'XYtrajPlot'), 'UserData');
     
-    drawImageOverlay(image, beamPos, magn, coords);
+    drawImageOverlay(image, beamPos, magn, coords, startIndex);
 catch
     disp('Seems like there are no images present')
 end
@@ -554,8 +592,24 @@ end
 %% Puts a row in the comment.txt file
 
 function commentCallback(hndl, ~, varargin)
-fid = fopen('comment.txt', 'a+');
-fprintf(fid,'%s (Trace %d): %s \n', track_filename, ni, get(edComment,'String'));
+ni = evalin('base', 'ni');
+imageStack = evalin('base', 'imageStack');
+
+track_filename = get(gcf,'userData');
+[pathstr, name, ext] = fileparts(track_filename);
+
+% edComment = findobj(gcf,'tag','main_edComment');
+
+commentFilename = 'comment.txt';
+
+% Check if file exists
+listing = dir(commentFilename);
+
+fid = fopen(commentFilename, 'a+');
+if ~length(listing)
+   fprintf(fid,'Filename \t Trace \t Comment\r\n');
+end
+fprintf(fid,'%s\t %d \t %s \r\n', name, ni, get(hndl,'String'));
 fclose(fid);
 set(hndl, 'String', '');
 end
@@ -605,7 +659,8 @@ axHndl = findobj(fHndl, 'Tag', 'linkX_x');
 limits = get(axHndl,'XLim');
 origPlotData = get(xHndl, 'UserData');
 xOrigPlotData = origPlotData(:, 1);
-x1Ind = find(xOrigPlotData >= limits(1), 1, 'first'); x2Ind = find(xOrigPlotData <= limits(2), 1, 'last');
+x1Ind = find(xOrigPlotData >= limits(1), 1, 'first');
+x2Ind = find(xOrigPlotData <= limits(2), 1, 'last');
 xC = origPlotData(x1Ind:x2Ind, 2);
 origPlotData = get(yHndl, 'UserData');
 yC = origPlotData(x1Ind:x2Ind, 2);
@@ -739,9 +794,12 @@ try
     xOrigPlotData = origPlotData(:, 1);
     
     % Find the indexes for the current zoom
-    x1Ind = find(xOrigPlotData >= limits(1), 1, 'first'); x2Ind = find(xOrigPlotData <= limits(2), 1, 'last');
+    x1Ind = find(xOrigPlotData >= limits(1), 1, 'first'); 
+    x2Ind = find(xOrigPlotData <= limits(2), 1, 'last');
     % Calculate the number of steps between displayed datapoints to be used
     samplStep = ceil((x2Ind-x1Ind)/subSampl);
+    %% %%
+    set(findobj(fHndl,'Tag','main_lbSubSamplingFactor'),'String', ['Subsampling factor: ' num2str(samplStep)]  )
     
     % Initiate variables used in the loop
     scXmed = 0;
@@ -758,34 +816,43 @@ try
         
         if strcmp(get(plotHndls(ind), 'Tag'), 'scannerXPlot')
             temp = filterData(yOrigPlotData, filt);
-            set(plotHndls(ind), 'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
+            set(plotHndls(ind),...
+                'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
                 'YData', temp(x1Ind:samplStep:x2Ind));
             scXmed = median(yOrigPlotData(x1Ind:samplStep:x2Ind));
             %         set(get(plotHndls(ind), 'Parent'), 'YLim',...
             %             [min(yOrigPlotData(x1Ind:samplStep:x2Ind)), max(yOrigPlotData(x1Ind:samplStep:x2Ind))],...
             %             'XLim', limits);
             set(axScanner, 'XLim', [min(yOrigPlotData(x1Ind:x2Ind)), max(yOrigPlotData(x1Ind:x2Ind))]);
+        
         elseif strcmp(get(plotHndls(ind), 'Tag'), 'scannerYPlot')
             temp = filterData(yOrigPlotData, filt);
-            set(plotHndls(ind), 'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
+            set(plotHndls(ind),...
+                'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
                 'YData', temp(x1Ind:samplStep:x2Ind));
             scYmed = median(yOrigPlotData(x1Ind:samplStep:x2Ind));
             %         set(get(plotHndls(ind), 'Parent'), 'YLim',...
             %             [min(yOrigPlotData(x1Ind:samplStep:x2Ind)), max(yOrigPlotData(x1Ind:samplStep:x2Ind))],...
             %             'XLim', limits);
             set(axScanner,'YLim', [min(yOrigPlotData(x1Ind:x2Ind)), max(yOrigPlotData(x1Ind:x2Ind))]);
+            
         elseif strcmp(get(plotHndls(ind), 'Tag'), 'stageXPlot')
             med = median(yOrigPlotData(x1Ind:samplStep:x2Ind)) - scXmed;
-            set(plotHndls(ind), 'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
+            set(plotHndls(ind),...
+                'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
                 'YData', yOrigPlotData(x1Ind:samplStep:x2Ind)-med);
+            
         elseif strcmp(get(plotHndls(ind), 'Tag'), 'stageYPlot')
             med = median(yOrigPlotData(x1Ind:samplStep:x2Ind)) - scYmed;
-            set(plotHndls(ind), 'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
+            set(plotHndls(ind),...
+                'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
                 'YData', yOrigPlotData(x1Ind:samplStep:x2Ind)-med);
+            
         elseif ~isempty(regexp(get(plotHndls(ind), 'Tag'), 'apd'))
             temp = filterData(yOrigPlotData(:, apdInd), filt);
             apdMax = max(apdMax, max(yOrigPlotData(x1Ind:samplStep:x2Ind)));
-            set(plotHndls(ind), 'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
+            set(plotHndls(ind),...
+                'XData', xOrigPlotData(x1Ind:samplStep:x2Ind),...
                 'YData', temp(x1Ind:samplStep:x2Ind));
             apdInd = apdInd+1;
             %         set(get(plotHndls(ind), 'Parent'), 'YLim',...
@@ -853,9 +920,62 @@ data = evalin('base', 'data');
 param = evalin('base', 'param');
 
 % Write whatever code you want to try out....
-temp = imread('loglog.m');
-figure; image(temp);
-clear temp;
+% temp = imread('loglog.m');
+% figure; image(temp);
+% clear temp;
+
+
+
+coords = [data{1}.scannerX, data{1}.scannerY];
+timeStep = data{1}.t(2)-data{1}.t(1);
+samplingPeriod = str2double(get(findobj(fHndl, 'Tag', 'main_edCDFSampling'), 'String'))/1e3;
+dataPeriod = round((samplingPeriod)/timeStep);
+
+sPMult = [1 4];
+
+chunkLength = 100e-3; %[s]
+chunkSize = floor(chunkLength/timeStep);
+
+for i=1:ceil(length(data{1}.scannerX)/chunkSize)
+    
+    % Index for chunks
+    startIndex = (i-1) * chunkSize+1;
+    endIndex = min((i) * chunkSize-1, length(data{1}.scannerX) );
+    
+    for j=1:length(sPMult)
+        
+        % Step length calculations
+        dCoords =...
+            coords(startIndex + (dataPeriod*sPMult(j)):(dataPeriod*sPMult(j)): endIndex,1:2) -...
+            coords(startIndex                         : dataPeriod*sPMult(j) :(endIndex-dataPeriod*sPMult(j)),1:2);
+        stepLengths = sqrt(sum(dCoords.^2,2))*1e3;
+        
+        % fitting CDF for obtaining the diffusivity
+        warning off
+        d1(i,j) = fitCDFsimple(stepLengths, samplingPeriod*sPMult(j));
+        warning on
+    end
+    
+    % save mean counts
+    meanCounts(i) = mean(sum(data{1}.apds(startIndex:endIndex,:),2))/timeStep*1e-3;
+
+end
+
+% Calculate steplengths
+
+figure 
+subplot(211)
+plot(chunkLength*(1:length(d1)) ,abs(d1),'linewidth',2)
+grid on
+ylabel 'Diffusivity [um2/s]'
+xlabel 'Macro time [s]'
+
+subplot(212)
+plot(chunkLength*(1:length(d1)) ,meanCounts,'linewidth',2), 
+grid on
+ylabel 'meanCounts [kHz]'
+xlabel 'Macro time [s]'
+
 
 
 end

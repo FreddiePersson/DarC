@@ -13,13 +13,13 @@ function [xAll, fAll, paramAll1, paramAll] = fitCDF(stepLengths, timeStep, makeP
 %% Settings
 
 % CDF parameters
-resolution = 1    %nm
+resolution = 1;    %nm
 
 
 % Fitting parameters:
-alpha = 0.1 % weight for the states
-Diff1 = 30000 % Diffusion coeff for the first state (fast)
-Diff2 = 5000 % Diffusion coeff for the second state (slow)
+alpha = 0.1; % weight for the states
+Diff1 = 30000; % Diffusion coeff for the first state (fast)
+Diff2 = 5000; % Diffusion coeff for the second state (slow)
 
 
 %% Fix if cell array of trajectories is given instead of steplengths
@@ -116,13 +116,15 @@ end
 
 function y = CDFfitAll_1state(param, x)
 % Only one state
-y = 1-exp(-x.^2./(4*param(2)*timeStep));
+y = 1-exp(-x.^2./(4*abs(param(2))*timeStep));
 y=y';
 end
 
 function y = CDFfitAll_2states(param, x)
 % Two states
-y = 1-param(1)*exp(-x.^2./(4*param(2)*timeStep))-(1-param(1))*exp(-x.^2./(4*param(3)*timeStep));
+y = 1-param(1)*exp(-x.^2./(4*abs(param(2))*timeStep))-(1-param(1))*exp(-x.^2./(4*abs(param(3))*timeStep));
+% sum(isinf(y))
+% sum(isnan(y))
 y=y';
 end
 
