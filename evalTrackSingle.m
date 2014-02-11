@@ -19,7 +19,7 @@ clc
 track_filename = get_cf_highlight; %get filename from Current Folder Explorer
 track_filename = track_filename{1};
 disp(['Loading ''' track_filename '''...'])
-[data, param, imageStack, ni, numTraces] = track_open_single_hdf5(track_filename, 1, 1);
+[data, param, imageStack, ni, numTraces, track_filename] = track_open_single_hdf5(track_filename, 1, 1);
 assignin('base', 'data', data);
 assignin('base', 'param', param);
 assignin('base', 'ni', ni);
@@ -67,7 +67,7 @@ ctrlPos.lbFilt2 = [xPos(1)+0.18 0.95 xSize(5) ySize-0.005];
 ctrlPos.lbSubSampling = [xPos(1) 0.845 xSize(5)*2.5 ySize];
 ctrlPos.adjustSubSampling = [xPos(1)+0.13 0.85 xSize(5) ySize];
 
-set(gcf, 'UserData', [pwd filesep track_filename]);
+set(gcf, 'UserData', [track_filename]);
 
 lbFilename = uicontrol(...
     'Style','Text',...
@@ -458,7 +458,7 @@ function traceNumCallback(hndl, ~, fHndl)
 ni = round(get(findobj(fHndl, 'Tag', 'main_slTraceNum'), 'Value'));
 
 track_filename = get(fHndl, 'UserData');
-[data, param, imageStack, ni, ~] = track_open_single_hdf5(track_filename, ni, 1);
+[data, param, imageStack, ni, ~, ~] = track_open_single_hdf5(track_filename, ni, 1);
 assignin('base', 'data', data);
 assignin('base', 'param', param);
 assignin('base', 'ni', ni);

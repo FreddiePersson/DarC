@@ -25,7 +25,7 @@
 %          - controlP
 %          - controllerUpdateClock
 
-function [data, conditions, imageStack, ind, numTraces] = track_open_single_hdf5(filename, ind, direction)
+function [data, conditions, imageStack, ind, numTraces, filename] = track_open_single_hdf5(filename, ind, direction)
 
 clearvars -except 'filename' 'ind' 'direction' 'ni'
 

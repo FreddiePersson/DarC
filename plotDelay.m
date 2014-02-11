@@ -1,5 +1,5 @@
-function [delay] = plotDelay(coords, apdCounts, samplTime, samplingPeriod)
-% Finds and plots the 'delay' as depined as the sampling time where the
+function [delay] = plotDelay(coords, apdCounts, samplTime)
+% Finds and plots the 'delay' as defined as the sampling time where the
 % correlation between steplength and countdeviation between the 3 detectors
 % is at its maximum.
 % 
@@ -60,10 +60,10 @@ hold on
 plot(timeSteps, corr, '-k'); 
 % Evaluated with shifting
 plot(timeSteps, xcorrMax(2, :), '--b'); 
-% Liek previous, but with added shifts
+% Like previous, but with added shifts
 plot(timeSteps+xcorrMax(1, :)*samplTime, xcorrMax(2, :), '-b');
 set(gca, 'xlim', [0 timeSteps(end)]);
-title('Correlation (steplength / std(apdCounts))');
+title('Correlation steplength VS std(apdCounts))');
 xlabel('Sampling time [ms]');
 ylabel('Correlation');
 hold off
